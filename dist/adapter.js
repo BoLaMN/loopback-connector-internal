@@ -1,4 +1,4 @@
-var BaseContext, EventEmitter, RemoteAdapter, RemoteContext, debug, promise, uniqueId,
+var BaseContext, EventEmitter, RemoteAdapter, RemoteRequest, debug, promise, uniqueId,
   extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
   hasProp = {}.hasOwnProperty,
   slice = [].slice;
@@ -7,7 +7,7 @@ debug = require('debug')('loopback:connector:internal:adapter');
 
 uniqueId = require('lodash').uniqueId;
 
-RemoteContext = require('./context').RemoteContext;
+RemoteRequest = require('./request').RemoteRequest;
 
 EventEmitter = require('events').EventEmitter;
 
@@ -31,7 +31,7 @@ RemoteAdapter = (function(superClass) {
     RemoteAdapter.__super__.constructor.call(this);
     this.options = options || this.remotes.options;
     this.requests = {};
-    this.ctx = new RemoteContext(this.options);
+    this.req = new RemoteRequest(this.options);
   }
 
   RemoteAdapter.prototype.connect = function(adapter) {
@@ -87,7 +87,7 @@ RemoteAdapter = (function(superClass) {
   };
 
   RemoteAdapter.prototype.message = function(message) {
-    var args, ctorArgs, data, err, id, inst, method, methodString, respond, type;
+    var args, ctorArgs, ctx, data, err, id, methodString, respond, type;
     type = message.type;
     if (type === 'response') {
       id = message.id, data = message.data, err = message.err;
@@ -101,45 +101,44 @@ RemoteAdapter = (function(superClass) {
     } else if (type === 'response') {
       methodString = message.methodString, ctorArgs = message.ctorArgs, args = message.args, id = message.id;
       respond = this.respond(id);
-      method = this.remotes.findMethod(methodString);
-      if (!method || method.__isProxy) {
+      ctx = this.context(methodString, ctorArgs, args, id);
+      if (!ctx.method || ctx.method.__isProxy) {
         return respond('method does not exist');
       }
-      args = this.ctx.buildArgs(ctorArgs, args, method);
-      if (method.isStatic) {
-        inst = method.ctor;
-      } else {
-        inst = method.sharedCtor;
-      }
-      return this.ctx.invoke(inst, method, args, respond);
+      return this.req.invoke(ctx, respond);
     } else {
       return this.emit('message', message);
     }
   };
 
-  RemoteAdapter.prototype.context = function(methodString, ctorArgs, args) {
-    var ctx, method;
+  RemoteAdapter.prototype.context = function(methodString, ctorArgs, args, id) {
+    var ctx, method, type;
     method = this.remotes.findMethod(methodString);
     ctx = new BaseContext(method);
+    ctx.args = this.req.buildArgs(ctorArgs, args, method);
     if (method.isStatic) {
-      ctx.inst = method.ctor;
+      ctx.scope = method.ctor;
     } else {
-      ctx.inst = method.sharedCtor;
+      ctx.scope = method.sharedCtor;
+    }
+    type = 'request';
+    if (id) {
+      type = 'respose';
     }
     ctx.message = {
-      type: 'request',
-      id: uniqueId(),
-      args: this.ctx.buildArgs(ctorArgs, args, method),
+      type: type,
+      id: id || uniqueId(),
+      args: ctx.args,
       ctorArgs: ctorArgs,
       methodString: methodString
     };
-    return promise.resolve(ctx);
+    return ctx;
   };
 
   RemoteAdapter.prototype.exec = function(type, ctx) {
     return new promise((function(_this) {
       return function(resolve, reject) {
-        return _this.remotes.execHooks(type, ctx.method, ctx.inst, ctx, function(err) {
+        return _this.remotes.execHooks(type, ctx.method, ctx.scope, ctx, function(err) {
           if (err) {
             return reject(err);
           }
@@ -150,11 +149,10 @@ RemoteAdapter = (function(superClass) {
   };
 
   RemoteAdapter.prototype.invoke = function() {
-    var args;
+    var args, ctx;
     args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
+    ctx = this.context.apply(this, args);
     return promise.bind(this).then(function() {
-      return this.context.apply(this, args);
-    }).then(function(ctx) {
       return this.exec('before', ctx);
     }).then(function(ctx) {
       return this.request(ctx);

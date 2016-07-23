@@ -7,7 +7,7 @@ JSON_TYPES = [
   'number'
 ]
 
-class exports.RemoteContext
+class exports.RemoteRequest
   constructor: (@ctorArgs, @args, @options = {}) ->
 
   buildArgs: (ctorArgs, args, method) ->
@@ -50,10 +50,8 @@ class exports.RemoteContext
 
     true
 
-  invoke: (scope, method, callback) ->
+  invoke: ({ scope, method, args }, callback) ->
     @method = method
-
-    args = @buildArgs @ctorArgs, @args, method
 
     @method.invoke scope, args, @options, this, (err, result) ->
       callback err, result

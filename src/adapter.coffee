@@ -1,7 +1,7 @@
 debug = require('debug')('loopback:connector:internal:adapter')
 
 { uniqueId } = require 'lodash'
-{ RemoteContext } = require './context'
+{ RemoteRequest } = require './request'
 { EventEmitter } = require 'events'
 
 BaseContext = require 'strong-remoting/lib/context-base'
@@ -22,7 +22,7 @@ class RemoteAdapter extends EventEmitter
     @options = options or @remotes.options
     @requests = {}
 
-    @ctx = new RemoteContext @options
+    @req = new RemoteRequest @options
 
   connect: (adapter) ->
     try
@@ -85,52 +85,52 @@ class RemoteAdapter extends EventEmitter
       { methodString, ctorArgs, args, id } = message
 
       respond = @respond id
-      method = @remotes.findMethod methodString
+      ctx = @context methodString, ctorArgs, args, id
 
-      if not method or method.__isProxy
+      if not ctx.method or ctx.method.__isProxy
         return respond 'method does not exist'
 
-      args = @ctx.buildArgs ctorArgs, args, method
-
-      if method.isStatic
-        inst = method.ctor
-      else
-        inst = method.sharedCtor
-
-      @ctx.invoke inst, method, args, respond
+      @req.invoke ctx, respond
     else
       @emit 'message', message
 
-  context: (methodString, ctorArgs, args) ->
+  context: (methodString, ctorArgs, args, id) ->
     method = @remotes.findMethod methodString
     ctx = new BaseContext method
 
+    ctx.args = @req.buildArgs ctorArgs, args, method
+
     if method.isStatic
-      ctx.inst = method.ctor
+      ctx.scope = method.ctor
     else
-      ctx.inst = method.sharedCtor
+      ctx.scope = method.sharedCtor
+
+    type = 'request'
+
+    if id
+      type = 'respose'
 
     ctx.message =
-      type: 'request'
-      id: uniqueId()
-      args: @ctx.buildArgs ctorArgs, args, method
+      type: type
+      id: id or uniqueId()
+      args: ctx.args
       ctorArgs: ctorArgs
       methodString: methodString
 
-    promise.resolve ctx
+    ctx
 
   exec: (type, ctx) ->
     new promise (resolve, reject) =>
-      @remotes.execHooks type, ctx.method, ctx.inst, ctx, (err) ->
+      @remotes.execHooks type, ctx.method, ctx.scope, ctx, (err) ->
         if err
           return reject err
         resolve ctx
 
   invoke: (args...) ->
+    ctx = @context args...
+
     promise.bind this
       .then ->
-        @context args...
-      .then (ctx) ->
         @exec 'before', ctx
       .then (ctx) ->
         @request ctx
