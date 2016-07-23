@@ -22,7 +22,7 @@ RemoteAdapter = require('./adapter');
 
 RemoteConnector = (function() {
   RemoteConnector.adapters = {
-    sqs: './remote-sqs'
+    sqs: './adapters/sqs'
   };
 
   function RemoteConnector(settings) {

@@ -14,7 +14,7 @@ RemoteAdapter = require './adapter'
 
 class RemoteConnector
   @adapters:
-    sqs: './remote-sqs'
+    sqs: './adapters/sqs'
 
   constructor: (settings) ->
     @name = 'internal'
