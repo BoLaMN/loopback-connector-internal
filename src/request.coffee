@@ -50,10 +50,17 @@ class exports.RemoteRequest
 
     true
 
-  invoke: ({ scope, method, args }, callback) ->
+  invoke: (ctx, callback) ->
+    { scope, method, args } = ctx
+
     @method = method
 
     @method.invoke scope, args, @options, this, (err, result) ->
-      callback err, result
+      if err
+        ctx.message.error = err
+
+      ctx.message.results = result
+
+      callback ctx
 
     return

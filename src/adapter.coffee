@@ -56,15 +56,8 @@ class RemoteAdapter extends EventEmitter
       ctx.results = results
       ctx
 
-  respond: (id) ->
-    messageQueue = @messageQueue
-
-    (err, data = null) ->
-      messageQueue.respond
-        type: 'response'
-        data: data
-        id: id
-        err: err
+  respond: (ctx) ->
+    @messageQueue.respond ctx.message
 
   message: (message) ->
     { type } = message
@@ -88,7 +81,8 @@ class RemoteAdapter extends EventEmitter
       ctx = @context methodString, ctorArgs, args, id
 
       if not ctx.method or ctx.method.__isProxy
-        return respond 'method does not exist'
+        ctx.message.err = 'method does not exist'
+        return respond ctx
 
       @req.invoke ctx, respond
     else

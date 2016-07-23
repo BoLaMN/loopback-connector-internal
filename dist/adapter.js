@@ -70,20 +70,8 @@ RemoteAdapter = (function(superClass) {
     });
   };
 
-  RemoteAdapter.prototype.respond = function(id) {
-    var messageQueue;
-    messageQueue = this.messageQueue;
-    return function(err, data) {
-      if (data == null) {
-        data = null;
-      }
-      return messageQueue.respond({
-        type: 'response',
-        data: data,
-        id: id,
-        err: err
-      });
-    };
+  RemoteAdapter.prototype.respond = function(ctx) {
+    return this.messageQueue.respond(ctx.message);
   };
 
   RemoteAdapter.prototype.message = function(message) {
@@ -103,7 +91,8 @@ RemoteAdapter = (function(superClass) {
       respond = this.respond(id);
       ctx = this.context(methodString, ctorArgs, args, id);
       if (!ctx.method || ctx.method.__isProxy) {
-        return respond('method does not exist');
+        ctx.message.err = 'method does not exist';
+        return respond(ctx);
       }
       return this.req.invoke(ctx, respond);
     } else {

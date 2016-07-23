@@ -57,12 +57,16 @@ exports.RemoteRequest = (function() {
     return true;
   };
 
-  RemoteRequest.prototype.invoke = function(arg, callback) {
+  RemoteRequest.prototype.invoke = function(ctx, callback) {
     var args, method, scope;
-    scope = arg.scope, method = arg.method, args = arg.args;
+    scope = ctx.scope, method = ctx.method, args = ctx.args;
     this.method = method;
     this.method.invoke(scope, args, this.options, this, function(err, result) {
-      return callback(err, result);
+      if (err) {
+        ctx.message.error = err;
+      }
+      ctx.message.results = result;
+      return callback(ctx);
     });
   };
 
