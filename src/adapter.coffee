@@ -21,50 +21,52 @@ class RemoteAdapter
   connect: (adapter) ->
     adapterClass = require adapter
 
-    @messageQueue = new adapterClass @message, @options
+    @messageQueue = new adapterClass @options
 
-    @messageQueue.connect()
+    @messageQueue.connect().on 'message', @message
 
-  message: (message, callback) ->
-    { methodString, ctorArgs, args, id, result } = message
+  request: (message, callback) ->
+    @requests[message.id] = callback
 
-    if methodString
-      method = @remotes.findMethod methodString
+    @messageQueue.send message
 
-      if not method or method.__isProxy
-        response =
-          err: 'method does not exist'
-          id: id
-          methodString: methodString
+  respond: (id) ->
+    messageQueue = @messageQueue
 
-        @messageQueue.sendMessage response, false, callback
+    (err, data = null) ->
+      messageQueue.respond
+        type: 'response'
+        data: data
+        id: id
+        err: err
 
-        return
+  message: ({ methodString, ctorArgs, args, id, data, type }) ->
+    if type is 'response'
+      @requests[id] data
+      delete @requests[id]
+      return
 
-      args = @ctx.buildArgs ctorArgs, args, method
+    respond = @respond id
+    method = @remotes.findMethod methodString
 
-      if method.isStatic
-        inst = method.ctor
-      else
-        inst = method.sharedCtor
+    if not method or method.__isProxy
+      return respond 'method does not exist'
 
-      @ctx.invoke inst, method, args, (err, result) ->
-        response =
-          data: result
-          id: id
-          error: err
+    args = @ctx.buildArgs ctorArgs, args, method
 
-        @messageQueue.sendMessage response, false, callback
+    if method.isStatic
+      inst = method.ctor
     else
-      @messageQueue.requests[id] result
+      inst = method.sharedCtor
 
-      callback()
+    @ctx.invoke inst, method, args, respond
 
   invoke: (methodString, ctorArgs, args, callback) ->
     method = @remotes.findMethod methodString
     args = @ctx.buildArgs ctorArgs, args, method
 
     message =
+      type: 'request'
       id: uniqueId()
       args: args
       ctorArgs: ctorArgs
@@ -77,7 +79,7 @@ class RemoteAdapter
 
     run = [
       (done) => @remotes.execHooks 'before', method, inst, @ctx, done
-      (done) => @messageQueue.sendMessage message, true, done
+      (done) => @request message, done
       (done) => @remotes.execHooks 'after', method, inst, @ctx, done
     ]
 

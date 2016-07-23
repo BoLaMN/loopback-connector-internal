@@ -3,12 +3,14 @@ debug = require('debug') 'loopback:connector:internal:sqs'
 aws = require 'aws-sdk'
 async = require 'async'
 
+{ EventEmitter } = require 'events'
 { isString, uniqueId } = require 'lodash'
 
-class RemoteSQSAdapter
-  constructor: (handleMessage, @settings) ->
+class RemoteSQSAdapter extends EventEmitter
+  constructor: (@settings) ->
+    super()
+
     @stopped = true
-    @requests = {}
 
     @settings.options.signatureVersion = 'v4'
     aws.config.update @settings.options
@@ -25,15 +27,15 @@ class RemoteSQSAdapter
 
     @sqs = new aws.SQS()
 
-    @handleMessage = handleMessage.bind this
-
-    @handleSqsResponseBound = @handleSqsResponse.bind(this)
-    @processMessageBound = @processMessage.bind(this)
+    @receiveBound = @receive.bind this
+    @processBound = @process.bind this
 
   connect: ->
     if @stopped
       @stopped = false
       @poll()
+
+    this
 
   disconnect: ->
     @stopped = true
@@ -42,45 +44,48 @@ class RemoteSQSAdapter
     if not @stopped
       debug 'polling for messages'
 
-      @sqs.receiveMessage @receiveParams, @handleSqsResponseBound
+      @sqs.receiveMessage @receiveParams, @receiveBound
 
     return
 
-  handleSqsResponse: (err, response = {}) ->
+  receive: (err, response = {}) ->
     debug 'received SQS response', response
 
     if response.Messages?.length > 0
-      async.each response.Messages, @processMessageBound, @poll
+      async.each response.Messages, @processBound, @poll
     else @poll()
 
     return
 
-  processMessage: (message, callback) ->
-    body = JSON.parse message.Body
+  process: (sqsMessage, callback) ->
+    message = JSON.parse sqsMessage.Body
 
-    run = [
-      (done) => @handleMessage body, done
-      (done) => @deleteMessage message, done
-    ]
-
-    async.series run, callback
+    @messages[message.id] = sqsMessage
+    @emit 'message', message
 
     return
 
-  sendMessage: (message, waitForResponse, callback) ->
+  respond: (message) ->
+    sqsMessage = @messages[message.id]
+    delete @messages[message.id]
+
+    run = [
+      (done) => @delete sqsMessage, done
+      (done) => @send message, done
+    ]
+
+    async.series run
+
+  send: (message, callback = ->) ->
     params =
       MessageBody: if isString message then message else JSON.stringify message
       QueueUrl: @settings.publish
 
     debug 'sending ', message
 
-    if waitForResponse
-      @requests[message.id] = callback
-      callback = ->
-
     @sqs.sendMessage params, callback
 
-  deleteMessage: (message, callback) ->
+  delete: (message, callback) ->
     deleteParams =
       QueueUrl: @settings.subscribe
       ReceiptHandle: message.ReceiptHandle

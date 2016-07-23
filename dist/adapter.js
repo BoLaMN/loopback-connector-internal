@@ -26,42 +26,51 @@ RemoteAdapter = (function() {
   RemoteAdapter.prototype.connect = function(adapter) {
     var adapterClass;
     adapterClass = require(adapter);
-    this.messageQueue = new adapterClass(this.message, this.options);
-    return this.messageQueue.connect();
+    this.messageQueue = new adapterClass(this.options);
+    return this.messageQueue.connect().on('message', this.message);
   };
 
-  RemoteAdapter.prototype.message = function(message, callback) {
-    var args, ctorArgs, id, inst, method, methodString, response, result;
-    methodString = message.methodString, ctorArgs = message.ctorArgs, args = message.args, id = message.id, result = message.result;
-    if (methodString) {
-      method = this.remotes.findMethod(methodString);
-      if (!method || method.__isProxy) {
-        response = {
-          err: 'method does not exist',
-          id: id,
-          methodString: methodString
-        };
-        this.messageQueue.sendMessage(response, false, callback);
-        return;
+  RemoteAdapter.prototype.request = function(message, callback) {
+    this.requests[message.id] = callback;
+    return this.messageQueue.send(message);
+  };
+
+  RemoteAdapter.prototype.respond = function(id) {
+    var messageQueue;
+    messageQueue = this.messageQueue;
+    return function(err, data) {
+      if (data == null) {
+        data = null;
       }
-      args = this.ctx.buildArgs(ctorArgs, args, method);
-      if (method.isStatic) {
-        inst = method.ctor;
-      } else {
-        inst = method.sharedCtor;
-      }
-      return this.ctx.invoke(inst, method, args, function(err, result) {
-        response = {
-          data: result,
-          id: id,
-          error: err
-        };
-        return this.messageQueue.sendMessage(response, false, callback);
+      return messageQueue.respond({
+        type: 'response',
+        data: data,
+        id: id,
+        err: err
       });
-    } else {
-      this.messageQueue.requests[id](result);
-      return callback();
+    };
+  };
+
+  RemoteAdapter.prototype.message = function(arg) {
+    var args, ctorArgs, data, id, inst, method, methodString, respond, type;
+    methodString = arg.methodString, ctorArgs = arg.ctorArgs, args = arg.args, id = arg.id, data = arg.data, type = arg.type;
+    if (type === 'response') {
+      this.requests[id](data);
+      delete this.requests[id];
+      return;
     }
+    respond = this.respond(id);
+    method = this.remotes.findMethod(methodString);
+    if (!method || method.__isProxy) {
+      return respond('method does not exist');
+    }
+    args = this.ctx.buildArgs(ctorArgs, args, method);
+    if (method.isStatic) {
+      inst = method.ctor;
+    } else {
+      inst = method.sharedCtor;
+    }
+    return this.ctx.invoke(inst, method, args, respond);
   };
 
   RemoteAdapter.prototype.invoke = function(methodString, ctorArgs, args, callback) {
@@ -69,6 +78,7 @@ RemoteAdapter = (function() {
     method = this.remotes.findMethod(methodString);
     args = this.ctx.buildArgs(ctorArgs, args, method);
     message = {
+      type: 'request',
       id: uniqueId(),
       args: args,
       ctorArgs: ctorArgs,
@@ -86,7 +96,7 @@ RemoteAdapter = (function() {
         };
       })(this), (function(_this) {
         return function(done) {
-          return _this.messageQueue.sendMessage(message, true, done);
+          return _this.request(message, done);
         };
       })(this), (function(_this) {
         return function(done) {
