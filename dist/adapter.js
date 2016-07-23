@@ -1,10 +1,14 @@
-var RemoteAdapter, RemoteContext, async, debug, uniqueId;
+var EventEmitter, RemoteAdapter, RemoteContext, async, debug, uniqueId,
+  extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
+  hasProp = {}.hasOwnProperty;
 
 debug = require('debug')('loopback:connector:internal:adapter');
 
 uniqueId = require('lodash').uniqueId;
 
 RemoteContext = require('./context').RemoteContext;
+
+EventEmitter = require('events').EventEmitter;
 
 async = require('async');
 
@@ -16,9 +20,12 @@ async = require('async');
  * @return {SQSAdapter}
  */
 
-RemoteAdapter = (function() {
+RemoteAdapter = (function(superClass) {
+  extend(RemoteAdapter, superClass);
+
   function RemoteAdapter(remotes, options) {
     this.remotes = remotes;
+    RemoteAdapter.__super__.constructor.call(this);
     this.options = options || this.remotes.options;
     this.ctx = new RemoteContext(this.options);
   }
@@ -27,7 +34,8 @@ RemoteAdapter = (function() {
     var adapterClass;
     adapterClass = require(adapter);
     this.messageQueue = new adapterClass(this.options);
-    return this.messageQueue.connect().on('message', this.message);
+    this.messageQueue.connect().on('message', this.message);
+    return this;
   };
 
   RemoteAdapter.prototype.request = function(message, callback) {
@@ -51,26 +59,30 @@ RemoteAdapter = (function() {
     };
   };
 
-  RemoteAdapter.prototype.message = function(arg) {
-    var args, ctorArgs, data, id, inst, method, methodString, respond, type;
-    methodString = arg.methodString, ctorArgs = arg.ctorArgs, args = arg.args, id = arg.id, data = arg.data, type = arg.type;
+  RemoteAdapter.prototype.message = function(message) {
+    var args, ctorArgs, data, err, id, inst, method, methodString, respond, type;
+    type = message.type;
     if (type === 'response') {
-      this.requests[id](data);
-      delete this.requests[id];
-      return;
-    }
-    respond = this.respond(id);
-    method = this.remotes.findMethod(methodString);
-    if (!method || method.__isProxy) {
-      return respond('method does not exist');
-    }
-    args = this.ctx.buildArgs(ctorArgs, args, method);
-    if (method.isStatic) {
-      inst = method.ctor;
+      id = message.id, data = message.data, err = message.err;
+      this.requests[id](err, data);
+      return delete this.requests[id];
+    } else if (type === 'response') {
+      methodString = message.methodString, ctorArgs = message.ctorArgs, args = message.args, id = message.id;
+      respond = this.respond(id);
+      method = this.remotes.findMethod(methodString);
+      if (!method || method.__isProxy) {
+        return respond('method does not exist');
+      }
+      args = this.ctx.buildArgs(ctorArgs, args, method);
+      if (method.isStatic) {
+        inst = method.ctor;
+      } else {
+        inst = method.sharedCtor;
+      }
+      return this.ctx.invoke(inst, method, args, respond);
     } else {
-      inst = method.sharedCtor;
+      return this.emit('message', message);
     }
-    return this.ctx.invoke(inst, method, args, respond);
   };
 
   RemoteAdapter.prototype.invoke = function(methodString, ctorArgs, args, callback) {
@@ -109,6 +121,6 @@ RemoteAdapter = (function() {
 
   return RemoteAdapter;
 
-})();
+})(EventEmitter);
 
 module.exports = RemoteAdapter;

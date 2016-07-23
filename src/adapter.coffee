@@ -2,6 +2,7 @@ debug = require('debug')('loopback:connector:internal:adapter')
 
 { uniqueId } = require 'lodash'
 { RemoteContext } = require './context'
+{ EventEmitter } = require 'events'
 
 async = require 'async'
 
@@ -12,8 +13,10 @@ async = require 'async'
 # @return {SQSAdapter}
 ###
 
-class RemoteAdapter
+class RemoteAdapter extends EventEmitter
   constructor: (@remotes, options) ->
+    super()
+
     @options = options or @remotes.options
 
     @ctx = new RemoteContext @options
@@ -24,6 +27,8 @@ class RemoteAdapter
     @messageQueue = new adapterClass @options
 
     @messageQueue.connect().on 'message', @message
+
+    this
 
   request: (message, callback) ->
     @requests[message.id] = callback
@@ -40,26 +45,34 @@ class RemoteAdapter
         id: id
         err: err
 
-  message: ({ methodString, ctorArgs, args, id, data, type }) ->
+  message: (message) ->
+    { type } = message
+
     if type is 'response'
-      @requests[id] data
+      { id, data, err } = message
+
+      @requests[id] err, data
       delete @requests[id]
-      return
 
-    respond = @respond id
-    method = @remotes.findMethod methodString
+    else if type is 'response'
+      { methodString, ctorArgs, args, id } = message
 
-    if not method or method.__isProxy
-      return respond 'method does not exist'
+      respond = @respond id
+      method = @remotes.findMethod methodString
 
-    args = @ctx.buildArgs ctorArgs, args, method
+      if not method or method.__isProxy
+        return respond 'method does not exist'
 
-    if method.isStatic
-      inst = method.ctor
+      args = @ctx.buildArgs ctorArgs, args, method
+
+      if method.isStatic
+        inst = method.ctor
+      else
+        inst = method.sharedCtor
+
+      @ctx.invoke inst, method, args, respond
     else
-      inst = method.sharedCtor
-
-    @ctx.invoke inst, method, args, respond
+      @emit 'message', message
 
   invoke: (methodString, ctorArgs, args, callback) ->
     method = @remotes.findMethod methodString
