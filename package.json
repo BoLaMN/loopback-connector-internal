@@ -1,0 +1,26 @@
+{
+  "name": "loopback-connector-internal",
+  "version": "0.1.0",
+  "description": "loopback-connector-internal",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": {
+    "name": "BoLaMN",
+    "url": "https://github.com/BoLaMN"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BoLaMN/loopback-connector-internal"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "async": "^1.5.2",
+    "strong-remoting": "2.28.1",
+    "debug": "^2.2.0",
+    "lodash": "^4.13.1",
+    "loopback-connector": "^2.3.0"
+  },
+  "devDependencies": {}
+}
