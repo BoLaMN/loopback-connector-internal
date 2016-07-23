@@ -41,7 +41,7 @@ RemoteConnector = (function() {
   }
 
   RemoteConnector.prototype.connect = function(adapter) {
-    this.remote.connect(RemoteConnector.adapters[adapter]);
+    this.remote.connect(RemoteConnector.adapters[adapter] || adapter);
     this.remotes.serverAdapter = this.remote;
   };
 
@@ -59,15 +59,16 @@ RemoteConnector = (function() {
     Object.keys(Model.relations).forEach(function(relationName) {
       var relatedValue, relation;
       relation = Model.relations[relationName];
-      if (data.hasOwnProperty(relationName)) {
-        relatedValue = data[relationName];
-        if (Array.isArray(relatedValue) && !(relatedValue instanceof List)) {
-          relatedValue = new List(relatedValue, relation.modelTo);
-        }
-        instance.__cachedRelations[relationName] = relatedValue;
-        instance.__data[relationName] = relatedValue;
-        instance.setStrict(false);
+      if (!data.hasOwnProperty(relationName)) {
+        return;
       }
+      relatedValue = data[relationName];
+      if (Array.isArray(relatedValue) && !(relatedValue instanceof List)) {
+        relatedValue = new List(relatedValue, relation.modelTo);
+      }
+      instance.__cachedRelations[relationName] = relatedValue;
+      instance.__data[relationName] = relatedValue;
+      instance.setStrict(false);
     });
     return instance;
   };
@@ -95,23 +96,15 @@ RemoteConnector = (function() {
   };
 
   RemoteConnector.prototype.remoteMethodProxy = function(remoteMethod) {
-    var remotes;
-    remotes = this.remotes;
+    var remote;
+    remote = this.remote;
     return function() {
-      var args, callback, ctorArgs, lastArgIsFunc;
+      var args, callback;
       args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
-      lastArgIsFunc = typeof args[args.length - 1] === 'function';
-      if (lastArgIsFunc) {
+      if (typeof args[args.length - 1] === 'function') {
         callback = args.pop();
-      } else {
-        callback = utils.createPromiseCallback();
       }
-      ctorArgs = [];
-      if (remoteMethod.isStatic) {
-        ctorArgs.push(this.id);
-      }
-      remotes.invoke(remoteMethod.stringName, ctorArgs, args, callback);
-      return callback.promise;
+      return remote.invoke(remoteMethod.stringName, [this.id], args).asCallback(callback);
     };
   };
 

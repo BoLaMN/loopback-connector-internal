@@ -95,21 +95,14 @@ class RemoteConnector
     RemoteConnector.adapters[name] = adapterClass
 
   remoteMethodProxy: (remoteMethod) ->
-    remotes = @remotes
+    remote = @remote
 
     (args...) ->
       if typeof args[args.length - 1] is 'function'
         callback = args.pop()
-      else
-        callback = utils.createPromiseCallback()
 
-      remotes.invoke remoteMethod.stringName, [ @id ], args, (err, data) ->
-        if not data and remoteMethod.isReturningArray()
-          data = []
-
-        callback err, data
-
-      callback.promise
+      remote.invoke remoteMethod.stringName, [ @id ], args
+        .asCallback callback
 
   define:  (definition) ->
     Model = definition.model

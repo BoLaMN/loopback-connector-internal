@@ -4,7 +4,9 @@ debug = require('debug')('loopback:connector:internal:adapter')
 { RemoteContext } = require './context'
 { EventEmitter } = require 'events'
 
-async = require 'async'
+BaseContext = require 'strong-remoting/lib/context-base'
+
+promise = require 'bluebird'
 
 ###*
 # Create a new `RemoteAdapter` with the given `options`.
@@ -18,6 +20,7 @@ class RemoteAdapter extends EventEmitter
     super()
 
     @options = options or @remotes.options
+    @requests = {}
 
     @ctx = new RemoteContext @options
 
@@ -33,10 +36,25 @@ class RemoteAdapter extends EventEmitter
 
     this
 
-  request: (message, callback) ->
-    @requests[message.id] = callback
+  request: (ctx) ->
+    resolve = undefined
+    reject = undefined
 
-    @messageQueue.send message
+    defer = new promise (args...) ->
+      [ resolve, reject ] = args
+
+    @requests[ctx.message.id] =
+      resolve: resolve
+      reject: reject
+
+    @messageQueue.send ctx.message
+
+    defer.then (results) ->
+      if not results and ctx.method.isReturningArray()
+        results = []
+
+      ctx.results = results
+      ctx
 
   respond: (id) ->
     messageQueue = @messageQueue
@@ -54,7 +72,13 @@ class RemoteAdapter extends EventEmitter
     if type is 'response'
       { id, data, err } = message
 
-      @requests[id] err, data
+      promise = @requests[id]
+
+      if err
+        promise.reject err
+      else
+        promise.resolve data
+
       delete @requests[id]
 
     else if type is 'response'
@@ -77,30 +101,42 @@ class RemoteAdapter extends EventEmitter
     else
       @emit 'message', message
 
-  invoke: (methodString, ctorArgs, args, callback) ->
+  context: (methodString, ctorArgs, args) ->
     method = @remotes.findMethod methodString
-    args = @ctx.buildArgs ctorArgs, args, method
+    ctx = new BaseContext method
 
-    message =
+    if method.isStatic
+      ctx.inst = method.ctor
+    else
+      ctx.inst = method.sharedCtor
+
+    ctx.message =
       type: 'request'
       id: uniqueId()
-      args: args
+      args: @ctx.buildArgs ctorArgs, args, method
       ctorArgs: ctorArgs
       methodString: methodString
 
-    if method.isStatic
-      inst = method.ctor
-    else
-      inst = method.sharedCtor
+    promise.resolve ctx
 
-    run = [
-      (done) => @remotes.execHooks 'before', method, inst, @ctx, done
-      (done) => @request message, done
-      (done) => @remotes.execHooks 'after', method, inst, @ctx, done
-    ]
+  exec: (type, ctx) ->
+    new promise (resolve, reject) =>
+      @remotes.execHooks type, ctx.method, ctx.inst, ctx, (err) ->
+        if err
+          return reject err
+        resolve ctx
 
-    async.series run, callback
-
-    return
+  invoke: (args...) ->
+    promise.bind this
+      .then ->
+        @context args...
+      .then (ctx) ->
+        @exec 'before', ctx
+      .then (ctx) ->
+        @request ctx
+      .then (ctx) ->
+        @exec 'after', ctx
+      .then (ctx) ->
+        ctx.results
 
 module.exports = RemoteAdapter
