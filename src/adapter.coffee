@@ -22,7 +22,10 @@ class RemoteAdapter extends EventEmitter
     @ctx = new RemoteContext @options
 
   connect: (adapter) ->
-    adapterClass = require adapter
+    try
+      adapterClass = require adapter
+    catch e
+      throw e
 
     @messageQueue = new adapterClass @options
 

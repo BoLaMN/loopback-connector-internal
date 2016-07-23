@@ -33,7 +33,7 @@ class RemoteConnector
     return
 
   connect: (adapter) ->
-    @remote.connect RemoteConnector.adapters[adapter]
+    @remote.connect RemoteConnector.adapters[adapter] or adapter
     @remotes.serverAdapter = @remote
 
     return
@@ -54,15 +54,17 @@ class RemoteConnector
     Object.keys(Model.relations).forEach (relationName) ->
       relation = Model.relations[relationName]
 
-      if data.hasOwnProperty relationName
-        relatedValue = data[relationName]
+      if not data.hasOwnProperty relationName
+        return
 
-        if Array.isArray(relatedValue) and !(relatedValue instanceof List)
-          relatedValue = new List(relatedValue, relation.modelTo)
+      relatedValue = data[relationName]
 
-        instance.__cachedRelations[relationName] = relatedValue
-        instance.__data[relationName] = relatedValue
-        instance.setStrict false
+      if Array.isArray(relatedValue) and !(relatedValue instanceof List)
+        relatedValue = new List(relatedValue, relation.modelTo)
+
+      instance.__cachedRelations[relationName] = relatedValue
+      instance.__data[relationName] = relatedValue
+      instance.setStrict false
 
       return
 
@@ -96,19 +98,16 @@ class RemoteConnector
     remotes = @remotes
 
     (args...) ->
-      lastArgIsFunc = typeof args[args.length - 1] == 'function'
-
-      if lastArgIsFunc
+      if typeof args[args.length - 1] is 'function'
         callback = args.pop()
       else
         callback = utils.createPromiseCallback()
 
-      ctorArgs = [ ]
+      remotes.invoke remoteMethod.stringName, [ @id ], args, (err, data) ->
+        if not data and remoteMethod.isReturningArray()
+          data = []
 
-      if remoteMethod.isStatic
-        ctorArgs.push @id
-
-      remotes.invoke remoteMethod.stringName, ctorArgs, args, callback
+        callback err, data
 
       callback.promise
 
