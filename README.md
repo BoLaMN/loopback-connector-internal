@@ -3,7 +3,6 @@
 Internal server to server communication for loopback (wip)
 
 * npm install loopback-connector-internal --save
-___
 
 ### Adapter Configuration (dataources.json)
 
@@ -19,4 +18,5 @@ server2:
   options:
     region: 'ap-southeast-2'
     accessKeyId: '1234'
-    secretAccessKey: 'ABCD'```
+    secretAccessKey: 'ABCD'
+```
