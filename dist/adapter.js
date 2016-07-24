@@ -57,6 +57,22 @@ RemoteAdapter = (function(superClass) {
     return this.app;
   };
 
+  RemoteAdapter.prototype.toRPC = function() {
+    var methods, result;
+    result = {};
+    methods = this.getApp()._remotes.methods();
+    methods.forEach(function(sharedMethod) {
+      var ref;
+      result[sharedMethod.stringName] = {
+        http: (ref = sharedMethod.fn) != null ? ref.http : void 0,
+        accepts: sharedMethod.accepts,
+        returns: sharedMethod.returns,
+        errors: sharedMethod.errors
+      };
+    });
+    return result;
+  };
+
   RemoteAdapter.prototype.request = function(ctx) {
     var defer, reject, resolve;
     resolve = void 0;
@@ -84,18 +100,32 @@ RemoteAdapter = (function(superClass) {
     return this.messageQueue.respond(ctx.message);
   };
 
+  RemoteAdapter.prototype.finish = function(message) {
+    return this.messageQueue.finish(message);
+  };
+
   RemoteAdapter.prototype.message = function(message) {
-    var args, ctorArgs, ctx, data, err, id, methodString, respond, type;
+    var args, ctorArgs, ctx, defer, err, id, methodString, respond, results, type;
     type = message.type;
-    if (type === 'response') {
-      id = message.id, data = message.data, err = message.err;
-      promise = this.requests[id];
-      if (err) {
-        promise.reject(err);
-      } else {
-        promise.resolve(data);
+    if (type === 'rpc') {
+      respond = this.respond.bind(this);
+      return respond({
+        results: this.toRPC(),
+        id: message.id
+      });
+    } else if (type === 'response') {
+      id = message.id, results = message.results, err = message.err;
+      defer = this.requests[id];
+      if (!defer) {
+        return this.finish(message);
       }
-      return delete this.requests[id];
+      if (err) {
+        defer.reject(err);
+      } else {
+        defer.resolve(results);
+      }
+      delete this.requests[id];
+      return this.finish(message);
     } else if (type === 'request') {
       methodString = message.methodString, ctorArgs = message.ctorArgs, args = message.args, id = message.id;
       respond = this.respond.bind(this);
@@ -112,17 +142,21 @@ RemoteAdapter = (function(superClass) {
 
   RemoteAdapter.prototype.context = function(methodString, ctorArgs, args, id) {
     var ctx, method, type;
-    method = this.getApp()._remotes.findMethod(methodString);
+    type = 'request';
+    if (id) {
+      type = 'response';
+    }
+    if (type === 'request') {
+      method = this.remotes.findMethod(methodString);
+    } else if (type === 'response') {
+      method = this.getApp()._remotes.findMethod(methodString);
+    }
     ctx = new BaseContext(method);
     ctx.args = args;
     if (method.isStatic) {
       ctx.scope = method.ctor;
     } else {
       ctx.scope = method.sharedCtor;
-    }
-    type = 'request';
-    if (id) {
-      type = 'respose';
     }
     if (type === 'request') {
       ctx.args = this.req.buildArgs(ctorArgs, args, method);

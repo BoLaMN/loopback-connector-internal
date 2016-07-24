@@ -52,9 +52,12 @@ class RemoteSQSAdapter extends EventEmitter
   receive: (err, response = {}) ->
     debug 'received SQS response', response
 
+    poll = @poll.bind this
+
     if response.Messages?.length > 0
-      async.each response.Messages, @processBound, @poll
-    else @poll()
+      async.each response.Messages, @processBound, ->
+        poll()
+    else poll()
 
     return
 
@@ -63,6 +66,8 @@ class RemoteSQSAdapter extends EventEmitter
 
     @messages[message.id] = sqsMessage
     @emit 'message', message
+
+    callback()
 
     return
 
@@ -77,6 +82,12 @@ class RemoteSQSAdapter extends EventEmitter
 
     async.series run
 
+  finish: (message) ->
+    sqsMessage = @messages[message.id]
+    delete @messages[message.id]
+
+    @delete sqsMessage
+
   send: (message, callback = ->) ->
     params =
       MessageBody: if isString message then message else JSON.stringify message
@@ -86,7 +97,7 @@ class RemoteSQSAdapter extends EventEmitter
 
     @sqs.sendMessage params, callback
 
-  delete: (message, callback) ->
+  delete: (message, callback = ->) ->
     deleteParams =
       QueueUrl: @settings.subscribe
       ReceiptHandle: message.ReceiptHandle

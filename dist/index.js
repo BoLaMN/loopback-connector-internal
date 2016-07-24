@@ -37,6 +37,9 @@ RemoteConnector = (function() {
     this.remote = new RemoteAdapter(this.remotes, settings);
     DAO = this.DataAccessObject = function() {};
     this.connect(this.adapter);
+    this.remote.on('message', function(msg) {
+      return debug(msg);
+    });
     return;
   }
 

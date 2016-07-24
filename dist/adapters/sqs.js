@@ -57,15 +57,18 @@ RemoteSQSAdapter = (function(superClass) {
   };
 
   RemoteSQSAdapter.prototype.receive = function(err, response) {
-    var ref1;
+    var poll, ref1;
     if (response == null) {
       response = {};
     }
     debug('received SQS response', response);
+    poll = this.poll.bind(this);
     if (((ref1 = response.Messages) != null ? ref1.length : void 0) > 0) {
-      async.each(response.Messages, this.processBound, this.poll);
+      async.each(response.Messages, this.processBound, function() {
+        return poll();
+      });
     } else {
-      this.poll();
+      poll();
     }
   };
 
@@ -74,6 +77,7 @@ RemoteSQSAdapter = (function(superClass) {
     message = JSON.parse(sqsMessage.Body);
     this.messages[message.id] = sqsMessage;
     this.emit('message', message);
+    callback();
   };
 
   RemoteSQSAdapter.prototype.respond = function(message) {
@@ -94,6 +98,13 @@ RemoteSQSAdapter = (function(superClass) {
     return async.series(run);
   };
 
+  RemoteSQSAdapter.prototype.finish = function(message) {
+    var sqsMessage;
+    sqsMessage = this.messages[message.id];
+    delete this.messages[message.id];
+    return this["delete"](sqsMessage);
+  };
+
   RemoteSQSAdapter.prototype.send = function(message, callback) {
     var params;
     if (callback == null) {
@@ -109,6 +120,9 @@ RemoteSQSAdapter = (function(superClass) {
 
   RemoteSQSAdapter.prototype["delete"] = function(message, callback) {
     var deleteParams;
+    if (callback == null) {
+      callback = function() {};
+    }
     deleteParams = {
       QueueUrl: this.settings.subscribe,
       ReceiptHandle: message.ReceiptHandle

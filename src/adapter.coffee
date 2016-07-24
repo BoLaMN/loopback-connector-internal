@@ -44,6 +44,21 @@ class RemoteAdapter extends EventEmitter
       @app = classes[firstClass].ctor.app
     @app
 
+  toRPC: ->
+    result = {}
+
+    methods = @getApp()._remotes.methods()
+
+    methods.forEach (sharedMethod) ->
+      result[sharedMethod.stringName] =
+        http: sharedMethod.fn?.http
+        accepts: sharedMethod.accepts
+        returns: sharedMethod.returns
+        errors: sharedMethod.errors
+      return
+
+    result
+
   request: (ctx) ->
     resolve = undefined
     reject = undefined
@@ -67,20 +82,34 @@ class RemoteAdapter extends EventEmitter
   respond: (ctx) ->
     @messageQueue.respond ctx.message
 
+  finish: (message) ->
+    @messageQueue.finish message
+
   message: (message) ->
     { type } = message
 
-    if type is 'response'
-      { id, data, err } = message
+    if type is 'rpc'
+      respond = @respond.bind this
 
-      promise = @requests[id]
+      respond
+        results: @toRPC()
+        id: message.id
+
+    else if type is 'response'
+      { id, results, err } = message
+
+      defer = @requests[id]
+
+      if not defer
+        return @finish message
 
       if err
-        promise.reject err
+        defer.reject err
       else
-        promise.resolve data
+        defer.resolve results
 
       delete @requests[id]
+      @finish message
 
     else if type is 'request'
       { methodString, ctorArgs, args, id } = message
@@ -97,7 +126,16 @@ class RemoteAdapter extends EventEmitter
       @emit 'message', message
 
   context: (methodString, ctorArgs, args, id) ->
-    method = @getApp()._remotes.findMethod methodString
+    type = 'request'
+
+    if id
+      type = 'response'
+
+    if type is 'request'
+      method = @remotes.findMethod methodString
+    else if type is 'response'
+      method = @getApp()._remotes.findMethod methodString
+
     ctx = new BaseContext method
     ctx.args = args
 
@@ -105,11 +143,6 @@ class RemoteAdapter extends EventEmitter
       ctx.scope = method.ctor
     else
       ctx.scope = method.sharedCtor
-
-    type = 'request'
-
-    if id
-      type = 'respose'
 
     if type is 'request'
       ctx.args = @req.buildArgs ctorArgs, args, method

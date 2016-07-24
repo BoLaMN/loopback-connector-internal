@@ -30,6 +30,9 @@ class RemoteConnector
 
     @connect @adapter
 
+    @remote.on 'message', (msg) ->
+      debug msg
+
     return
 
   connect: (adapter) ->
