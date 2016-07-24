@@ -72,21 +72,15 @@ class RemoteSQSAdapter extends EventEmitter
     return
 
   respond: (message) ->
-    sqsMessage = @messages[message.id]
-    delete @messages[message.id]
-
     run = [
-      (done) => @delete sqsMessage, done
+      (done) => @delete message, done
       (done) => @send message, done
     ]
 
     async.series run
 
   finish: (message) ->
-    sqsMessage = @messages[message.id]
-    delete @messages[message.id]
-
-    @delete sqsMessage
+    @delete message
 
   send: (message, callback = ->) ->
     params =
@@ -98,6 +92,9 @@ class RemoteSQSAdapter extends EventEmitter
     @sqs.sendMessage params, callback
 
   delete: (message, callback = ->) ->
+    sqsMessage = @messages[message.id]
+    delete @messages[message.id]
+
     deleteParams =
       QueueUrl: @settings.subscribe
       ReceiptHandle: message.ReceiptHandle

@@ -81,13 +81,11 @@ RemoteSQSAdapter = (function(superClass) {
   };
 
   RemoteSQSAdapter.prototype.respond = function(message) {
-    var run, sqsMessage;
-    sqsMessage = this.messages[message.id];
-    delete this.messages[message.id];
+    var run;
     run = [
       (function(_this) {
         return function(done) {
-          return _this["delete"](sqsMessage, done);
+          return _this["delete"](message, done);
         };
       })(this), (function(_this) {
         return function(done) {
@@ -99,10 +97,7 @@ RemoteSQSAdapter = (function(superClass) {
   };
 
   RemoteSQSAdapter.prototype.finish = function(message) {
-    var sqsMessage;
-    sqsMessage = this.messages[message.id];
-    delete this.messages[message.id];
-    return this["delete"](sqsMessage);
+    return this["delete"](message);
   };
 
   RemoteSQSAdapter.prototype.send = function(message, callback) {
@@ -119,10 +114,12 @@ RemoteSQSAdapter = (function(superClass) {
   };
 
   RemoteSQSAdapter.prototype["delete"] = function(message, callback) {
-    var deleteParams;
+    var deleteParams, sqsMessage;
     if (callback == null) {
       callback = function() {};
     }
+    sqsMessage = this.messages[message.id];
+    delete this.messages[message.id];
     deleteParams = {
       QueueUrl: this.settings.subscribe,
       ReceiptHandle: message.ReceiptHandle
