@@ -99,7 +99,7 @@ class RemoteAdapter extends EventEmitter
   context: (methodString, ctorArgs, args, id) ->
     method = @getApp()._remotes.findMethod methodString
     ctx = new BaseContext method
-
+    ctx.args = args
 
     if method.isStatic
       ctx.scope = method.ctor
@@ -110,6 +110,9 @@ class RemoteAdapter extends EventEmitter
 
     if id
       type = 'respose'
+
+    if type is 'request'
+      ctx.args = @req.buildArgs ctorArgs, args, method
 
     ctx.message =
       type: type
@@ -122,6 +125,7 @@ class RemoteAdapter extends EventEmitter
 
   exec: (type, ctx) ->
     new promise (resolve, reject) =>
+      @getApp()._remotes.execHooks type, ctx.method, ctx.scope, ctx, (err) ->
         if err
           return reject err
         resolve ctx
