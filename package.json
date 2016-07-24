@@ -1,6 +1,6 @@
 {
   "name": "loopback-connector-internal",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "loopback-connector-internal",
   "main": "dist/index.js",
   "scripts": {
