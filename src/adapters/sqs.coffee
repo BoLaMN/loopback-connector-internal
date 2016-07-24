@@ -11,6 +11,7 @@ class RemoteSQSAdapter extends EventEmitter
     super()
 
     @stopped = true
+    @messages = {}
 
     @settings.options.signatureVersion = 'v4'
     aws.config.update @settings.options

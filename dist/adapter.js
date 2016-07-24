@@ -43,8 +43,18 @@ RemoteAdapter = (function(superClass) {
       throw e;
     }
     this.messageQueue = new adapterClass(this.options);
-    this.messageQueue.connect().on('message', this.message);
+    this.messageQueue.connect().on('message', this.message.bind(this));
     return this;
+  };
+
+  RemoteAdapter.prototype.getApp = function() {
+    var classes, firstClass;
+    if (!this.app) {
+      classes = this.remotes._classes;
+      firstClass = Object.keys(classes)[0];
+      this.app = classes[firstClass].ctor.app;
+    }
+    return this.app;
   };
 
   RemoteAdapter.prototype.request = function(ctx) {
@@ -86,9 +96,9 @@ RemoteAdapter = (function(superClass) {
         promise.resolve(data);
       }
       return delete this.requests[id];
-    } else if (type === 'response') {
+    } else if (type === 'request') {
       methodString = message.methodString, ctorArgs = message.ctorArgs, args = message.args, id = message.id;
-      respond = this.respond(id);
+      respond = this.respond.bind(this);
       ctx = this.context(methodString, ctorArgs, args, id);
       if (!ctx.method || ctx.method.__isProxy) {
         ctx.message.err = 'method does not exist';
@@ -102,9 +112,9 @@ RemoteAdapter = (function(superClass) {
 
   RemoteAdapter.prototype.context = function(methodString, ctorArgs, args, id) {
     var ctx, method, type;
-    method = this.remotes.findMethod(methodString);
+    method = this.getApp()._remotes.findMethod(methodString);
     ctx = new BaseContext(method);
-    ctx.args = this.req.buildArgs(ctorArgs, args, method);
+    ctx.args = args;
     if (method.isStatic) {
       ctx.scope = method.ctor;
     } else {
@@ -113,6 +123,9 @@ RemoteAdapter = (function(superClass) {
     type = 'request';
     if (id) {
       type = 'respose';
+    }
+    if (type === 'request') {
+      ctx.args = this.req.buildArgs(ctorArgs, args, method);
     }
     ctx.message = {
       type: type,
@@ -127,7 +140,7 @@ RemoteAdapter = (function(superClass) {
   RemoteAdapter.prototype.exec = function(type, ctx) {
     return new promise((function(_this) {
       return function(resolve, reject) {
-        return _this.remotes.execHooks(type, ctx.method, ctx.scope, ctx, function(err) {
+        return _this.getApp()._remotes.execHooks(type, ctx.method, ctx.scope, ctx, function(err) {
           if (err) {
             return reject(err);
           }

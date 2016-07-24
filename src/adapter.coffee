@@ -32,9 +32,17 @@ class RemoteAdapter extends EventEmitter
 
     @messageQueue = new adapterClass @options
 
-    @messageQueue.connect().on 'message', @message
+    @messageQueue.connect().on 'message', @message.bind(this)
 
     this
+
+  getApp: ->
+    if not @app
+      classes = @remotes._classes
+      firstClass = Object.keys(classes)[0]
+
+      @app = classes[firstClass].ctor.app
+    @app
 
   request: (ctx) ->
     resolve = undefined
@@ -74,10 +82,10 @@ class RemoteAdapter extends EventEmitter
 
       delete @requests[id]
 
-    else if type is 'response'
+    else if type is 'request'
       { methodString, ctorArgs, args, id } = message
 
-      respond = @respond id
+      respond = @respond.bind this
       ctx = @context methodString, ctorArgs, args, id
 
       if not ctx.method or ctx.method.__isProxy
@@ -89,10 +97,9 @@ class RemoteAdapter extends EventEmitter
       @emit 'message', message
 
   context: (methodString, ctorArgs, args, id) ->
-    method = @remotes.findMethod methodString
+    method = @getApp()._remotes.findMethod methodString
     ctx = new BaseContext method
 
-    ctx.args = @req.buildArgs ctorArgs, args, method
 
     if method.isStatic
       ctx.scope = method.ctor
@@ -115,7 +122,6 @@ class RemoteAdapter extends EventEmitter
 
   exec: (type, ctx) ->
     new promise (resolve, reject) =>
-      @remotes.execHooks type, ctx.method, ctx.scope, ctx, (err) ->
         if err
           return reject err
         resolve ctx

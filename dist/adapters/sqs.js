@@ -20,6 +20,7 @@ RemoteSQSAdapter = (function(superClass) {
     this.settings = settings;
     RemoteSQSAdapter.__super__.constructor.call(this);
     this.stopped = true;
+    this.messages = {};
     this.settings.options.signatureVersion = 'v4';
     aws.config.update(this.settings.options);
     sqs = this.settings.options || {};
