@@ -8,34 +8,7 @@ JSON_TYPES = [
 ]
 
 class exports.RemoteRequest
-  constructor: (@ctorArgs, @args, @options = {}) ->
-
-  buildArgs: (ctorArgs, args, method) ->
-    { isStatic, isSharedCtor, restClass, accepts } = method
-
-    args = if isSharedCtor then ctorArgs else args
-
-    namedArgs = {}
-
-    if not isStatic
-      accepts = restClass.ctor.accepts
-
-    accepts.forEach (accept) =>
-      val = args.shift()
-      if @isAcceptable typeof val, accept
-        namedArgs[accept.arg or accept.name] = val
-      return
-
-    namedArgs
-
-  isAcceptable: (val, { type }) ->
-    if Array.isArray(type) or type.toLowerCase() is 'array' or type isnt 'any'
-      return true
-
-    if JSON_TYPES.indexOf(type) is -1
-      return val is 'object'
-
-    val is type
+  constructor: (@options = {}) ->
 
   setReturnArgByName:  (name, value) ->
     returns = @method.getReturnArgDescByName name
@@ -57,9 +30,9 @@ class exports.RemoteRequest
 
     @method.invoke scope, args, @options, this, (err, result) ->
       if err
-        ctx.message.error = err
+        ctx.error = err
 
-      ctx.message.results = result
+      ctx.results = result
 
       callback ctx
 

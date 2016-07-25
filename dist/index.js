@@ -37,9 +37,6 @@ RemoteConnector = (function() {
     this.remote = new RemoteAdapter(this.remotes, settings);
     DAO = this.DataAccessObject = function() {};
     this.connect(this.adapter);
-    this.remote.on('message', function(msg) {
-      return debug(msg);
-    });
     return;
   }
 
@@ -107,7 +104,11 @@ RemoteConnector = (function() {
       if (typeof args[args.length - 1] === 'function') {
         callback = args.pop();
       }
-      return remote.invoke(remoteMethod.stringName, [this.id], args).asCallback(callback);
+      return remote.invoke(remoteMethod.stringName, [this.id], args).then(function(data) {
+        return callback(null, data.results);
+      })["catch"](function(err) {
+        return callback(err);
+      });
     };
   };
 

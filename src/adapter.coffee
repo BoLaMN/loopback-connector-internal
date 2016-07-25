@@ -1,10 +1,8 @@
 debug = require('debug')('loopback:connector:internal:adapter')
 
-{ uniqueId } = require 'lodash'
 { RemoteRequest } = require './request'
 { EventEmitter } = require 'events'
-
-BaseContext = require 'strong-remoting/lib/context-base'
+{ BaseContext } = require './base-context'
 
 promise = require 'bluebird'
 
@@ -66,11 +64,12 @@ class RemoteAdapter extends EventEmitter
     defer = new promise (args...) ->
       [ resolve, reject ] = args
 
-    @requests[ctx.message.id] =
+    @requests[ctx.id] =
+      ctx: ctx
       resolve: resolve
       reject: reject
 
-    @messageQueue.send ctx.message
+    @messageQueue.send ctx
 
     defer.then (results) ->
       if not results and ctx.method.isReturningArray()
@@ -80,7 +79,7 @@ class RemoteAdapter extends EventEmitter
       ctx
 
   respond: (ctx) ->
-    @messageQueue.respond ctx.message
+    @messageQueue.respond ctx
 
   finish: (message) ->
     @messageQueue.finish message
@@ -103,6 +102,8 @@ class RemoteAdapter extends EventEmitter
       if not defer
         return @finish message
 
+      ctx = defer.ctx
+
       if err
         defer.reject err
       else
@@ -118,7 +119,7 @@ class RemoteAdapter extends EventEmitter
       ctx = @context methodString, ctorArgs, args, id
 
       if not ctx.method or ctx.method.__isProxy
-        ctx.message.err = 'method does not exist'
+        ctx.err = 'method does not exist'
         return respond ctx
 
       @req.invoke ctx, respond
@@ -136,25 +137,7 @@ class RemoteAdapter extends EventEmitter
     else if type is 'response'
       method = @getApp()._remotes.findMethod methodString
 
-    ctx = new BaseContext method
-    ctx.args = args
-
-    if method.isStatic
-      ctx.scope = method.ctor
-    else
-      ctx.scope = method.sharedCtor
-
-    if type is 'request'
-      ctx.args = @req.buildArgs ctorArgs, args, method
-
-    ctx.message =
-      type: type
-      id: id or uniqueId()
-      args: ctx.args
-      ctorArgs: ctorArgs
-      methodString: methodString
-
-    ctx
+    new BaseContext id, type, methodString, method, ctorArgs, args
 
   exec: (type, ctx) ->
     new promise (resolve, reject) =>
@@ -173,7 +156,5 @@ class RemoteAdapter extends EventEmitter
         @request ctx
       .then (ctx) ->
         @exec 'after', ctx
-      .then (ctx) ->
-        ctx.results
 
 module.exports = RemoteAdapter

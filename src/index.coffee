@@ -30,9 +30,6 @@ class RemoteConnector
 
     @connect @adapter
 
-    @remote.on 'message', (msg) ->
-      debug msg
-
     return
 
   connect: (adapter) ->
@@ -105,7 +102,10 @@ class RemoteConnector
         callback = args.pop()
 
       remote.invoke remoteMethod.stringName, [ @id ], args
-        .asCallback callback
+        .then (data) ->
+          callback null, data.results
+        .catch (err) ->
+          callback err
 
   define:  (definition) ->
     Model = definition.model

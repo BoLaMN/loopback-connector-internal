@@ -5,43 +5,9 @@ debug = require('debug')('loopback:connector:internal:context');
 JSON_TYPES = ['boolean', 'string', 'object', 'number'];
 
 exports.RemoteRequest = (function() {
-  function RemoteRequest(ctorArgs1, args1, options) {
-    this.ctorArgs = ctorArgs1;
-    this.args = args1;
+  function RemoteRequest(options) {
     this.options = options != null ? options : {};
   }
-
-  RemoteRequest.prototype.buildArgs = function(ctorArgs, args, method) {
-    var accepts, isSharedCtor, isStatic, namedArgs, restClass;
-    isStatic = method.isStatic, isSharedCtor = method.isSharedCtor, restClass = method.restClass, accepts = method.accepts;
-    args = isSharedCtor ? ctorArgs : args;
-    namedArgs = {};
-    if (!isStatic) {
-      accepts = restClass.ctor.accepts;
-    }
-    accepts.forEach((function(_this) {
-      return function(accept) {
-        var val;
-        val = args.shift();
-        if (_this.isAcceptable(typeof val, accept)) {
-          namedArgs[accept.arg || accept.name] = val;
-        }
-      };
-    })(this));
-    return namedArgs;
-  };
-
-  RemoteRequest.prototype.isAcceptable = function(val, arg) {
-    var type;
-    type = arg.type;
-    if (Array.isArray(type) || type.toLowerCase() === 'array' || type !== 'any') {
-      return true;
-    }
-    if (JSON_TYPES.indexOf(type) === -1) {
-      return val === 'object';
-    }
-    return val === type;
-  };
 
   RemoteRequest.prototype.setReturnArgByName = function(name, value) {
     var returns;
@@ -63,9 +29,9 @@ exports.RemoteRequest = (function() {
     this.method = method;
     this.method.invoke(scope, args, this.options, this, function(err, result) {
       if (err) {
-        ctx.message.error = err;
+        ctx.error = err;
       }
-      ctx.message.results = result;
+      ctx.results = result;
       return callback(ctx);
     });
   };

@@ -1,17 +1,15 @@
-var BaseContext, EventEmitter, RemoteAdapter, RemoteRequest, debug, promise, uniqueId,
+var BaseContext, EventEmitter, RemoteAdapter, RemoteRequest, debug, promise,
   extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
   hasProp = {}.hasOwnProperty,
   slice = [].slice;
 
 debug = require('debug')('loopback:connector:internal:adapter');
 
-uniqueId = require('lodash').uniqueId;
-
 RemoteRequest = require('./request').RemoteRequest;
 
 EventEmitter = require('events').EventEmitter;
 
-BaseContext = require('strong-remoting/lib/context-base');
+BaseContext = require('./base-context').BaseContext;
 
 promise = require('bluebird');
 
@@ -82,11 +80,12 @@ RemoteAdapter = (function(superClass) {
       args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
       return resolve = args[0], reject = args[1], args;
     });
-    this.requests[ctx.message.id] = {
+    this.requests[ctx.id] = {
+      ctx: ctx,
       resolve: resolve,
       reject: reject
     };
-    this.messageQueue.send(ctx.message);
+    this.messageQueue.send(ctx);
     return defer.then(function(results) {
       if (!results && ctx.method.isReturningArray()) {
         results = [];
@@ -97,7 +96,7 @@ RemoteAdapter = (function(superClass) {
   };
 
   RemoteAdapter.prototype.respond = function(ctx) {
-    return this.messageQueue.respond(ctx.message);
+    return this.messageQueue.respond(ctx);
   };
 
   RemoteAdapter.prototype.finish = function(message) {
@@ -119,6 +118,7 @@ RemoteAdapter = (function(superClass) {
       if (!defer) {
         return this.finish(message);
       }
+      ctx = defer.ctx;
       if (err) {
         defer.reject(err);
       } else {
@@ -131,7 +131,7 @@ RemoteAdapter = (function(superClass) {
       respond = this.respond.bind(this);
       ctx = this.context(methodString, ctorArgs, args, id);
       if (!ctx.method || ctx.method.__isProxy) {
-        ctx.message.err = 'method does not exist';
+        ctx.err = 'method does not exist';
         return respond(ctx);
       }
       return this.req.invoke(ctx, respond);
@@ -141,7 +141,7 @@ RemoteAdapter = (function(superClass) {
   };
 
   RemoteAdapter.prototype.context = function(methodString, ctorArgs, args, id) {
-    var ctx, method, type;
+    var method, type;
     type = 'request';
     if (id) {
       type = 'response';
@@ -151,24 +151,7 @@ RemoteAdapter = (function(superClass) {
     } else if (type === 'response') {
       method = this.getApp()._remotes.findMethod(methodString);
     }
-    ctx = new BaseContext(method);
-    ctx.args = args;
-    if (method.isStatic) {
-      ctx.scope = method.ctor;
-    } else {
-      ctx.scope = method.sharedCtor;
-    }
-    if (type === 'request') {
-      ctx.args = this.req.buildArgs(ctorArgs, args, method);
-    }
-    ctx.message = {
-      type: type,
-      id: id || uniqueId(),
-      args: ctx.args,
-      ctorArgs: ctorArgs,
-      methodString: methodString
-    };
-    return ctx;
+    return new BaseContext(id, type, methodString, method, ctorArgs, args);
   };
 
   RemoteAdapter.prototype.exec = function(type, ctx) {
@@ -194,8 +177,6 @@ RemoteAdapter = (function(superClass) {
       return this.request(ctx);
     }).then(function(ctx) {
       return this.exec('after', ctx);
-    }).then(function(ctx) {
-      return ctx.results;
     });
   };
 

@@ -29,7 +29,7 @@ RemoteSQSAdapter = (function(superClass) {
       AttributeNames: sqs.attributeNames || [],
       MessageAttributeNames: sqs.messageAttributeNames || [],
       MaxNumberOfMessages: sqs.batchSize || 10,
-      WaitTimeSeconds: sqs.waitTimeSeconds || 20,
+      WaitTimeSeconds: sqs.waitTimeSeconds || 3,
       VisibilityTimeout: sqs.visibilityTimeout
     };
     this.sqs = new aws.SQS();
@@ -109,8 +109,13 @@ RemoteSQSAdapter = (function(superClass) {
       MessageBody: isString(message) ? message : JSON.stringify(message),
       QueueUrl: this.settings.publish
     };
-    debug('sending ', message);
-    return this.sqs.sendMessage(params, callback);
+    debug('sending ', params);
+    return this.sqs.sendMessage(params, function(err) {
+      if (err) {
+        debug('error sending', err);
+      }
+      return callback(err);
+    });
   };
 
   RemoteSQSAdapter.prototype["delete"] = function(message, callback) {
@@ -122,9 +127,9 @@ RemoteSQSAdapter = (function(superClass) {
     delete this.messages[message.id];
     deleteParams = {
       QueueUrl: this.settings.subscribe,
-      ReceiptHandle: message.ReceiptHandle
+      ReceiptHandle: sqsMessage.ReceiptHandle
     };
-    debug('deleting message %s', message.MessageId);
+    debug('deleting message %s', sqsMessage.MessageId);
     this.sqs.deleteMessage(deleteParams, callback);
   };
 

@@ -23,7 +23,7 @@ class RemoteSQSAdapter extends EventEmitter
       AttributeNames: sqs.attributeNames or []
       MessageAttributeNames: sqs.messageAttributeNames or []
       MaxNumberOfMessages: sqs.batchSize or 10
-      WaitTimeSeconds: sqs.waitTimeSeconds or 20
+      WaitTimeSeconds: sqs.waitTimeSeconds or 3
       VisibilityTimeout: sqs.visibilityTimeout
 
     @sqs = new aws.SQS()
@@ -87,9 +87,12 @@ class RemoteSQSAdapter extends EventEmitter
       MessageBody: if isString message then message else JSON.stringify message
       QueueUrl: @settings.publish
 
-    debug 'sending ', message
+    debug 'sending ', params
 
-    @sqs.sendMessage params, callback
+    @sqs.sendMessage params, (err) ->
+      if err
+        debug 'error sending', err
+      callback err
 
   delete: (message, callback = ->) ->
     sqsMessage = @messages[message.id]
@@ -97,9 +100,9 @@ class RemoteSQSAdapter extends EventEmitter
 
     deleteParams =
       QueueUrl: @settings.subscribe
-      ReceiptHandle: message.ReceiptHandle
+      ReceiptHandle: sqsMessage.ReceiptHandle
 
-    debug 'deleting message %s', message.MessageId
+    debug 'deleting message %s', sqsMessage.MessageId
 
     @sqs.deleteMessage deleteParams, callback
 
